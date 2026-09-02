@@ -1,82 +1,87 @@
 # Task Management API
 
-REST API для системи управління задачами, побудований на FastAPI, SQLAlchemy (async) та PostgreSQL.
+REST API for a task management system built with FastAPI, SQLAlchemy (async), and PostgreSQL.
 
-## Стек
+## Stack
 
-- FastAPI
-- SQLAlchemy 2.0 (async) + asyncpg
-- PostgreSQL 17
-- Alembic (міграції)
-- Pydantic v2
-- JWT-автентифікація (PyJWT + bcrypt)
-- Docker Compose
-- Pytest (pytest-asyncio, httpx, aiosqlite для тестової БД в памʼяті)
-- Background Tasks (asyncio-воркер для автоскасування прострочених задач)
+* FastAPI
+* SQLAlchemy 2.0 (async) + asyncpg
+* PostgreSQL 17
+* Alembic (migrations)
+* Pydantic v2
+* JWT authentication (PyJWT + bcrypt)
+* Docker Compose
+* Pytest (pytest-asyncio, httpx, aiosqlite for the in-memory test database)
+* Background Tasks (asyncio worker for automatically cancelling overdue tasks)
 
-## Запуск через Docker Compose
+## Running with Docker Compose
 
 ```bash
 docker compose up --build
 ```
 
-Це підніме:
-- `db` — PostgreSQL 17 на порту `5434` (host) → `5432` (container)
-- `api` — FastAPI застосунок на порту `8000`, автоматично застосовує Alembic-міграції при старті
+This will start:
 
-API буде доступне на `http://localhost:8000`, інтерактивна документація — на `http://localhost:8000/docs`.
+* `db` — PostgreSQL 17 on port `5434` (host) → `5432` (container)
+* `api` — FastAPI application on port `8000`, automatically applying Alembic migrations on startup
 
-## Локальний запуск (без Docker)
+The API will be available at `http://localhost:8000`, and the interactive documentation will be available at `http://localhost:8000/docs`.
 
-1. Скопіюйте `.envexample` у `.env` та заповніть значення (`DATABASE_URL`, `SECRET_KEY`, ...).
-2. Встановіть залежності:
+## Local Run (without Docker)
+
+1. Copy `.envexample` to `.env` and fill in the required values (`DATABASE_URL`, `SECRET_KEY`, ...).
+2. Install dependencies:
+
    ```bash
    pip install -r requirements.txt
    ```
-3. Підніміть PostgreSQL локально (наприклад, тільки сервіс `db` з docker-compose):
+3. Start PostgreSQL locally (for example, only the `db` service from docker-compose):
+
    ```bash
    docker compose up db
    ```
-4. Застосуйте міграції:
+4. Apply migrations:
+
    ```bash
    alembic upgrade head
    ```
-5. Запустіть сервер:
+5. Start the server:
+
    ```bash
    uvicorn app.main:app --reload
    ```
 
-## Тести
+## Tests
 
-Тести використовують окрему SQLite-базу в памʼяті (через `aiosqlite`) і не потребують запущеного PostgreSQL.
+Tests use a separate in-memory SQLite database (via `aiosqlite`) and do not require a running PostgreSQL instance.
 
 ```bash
 pytest
 ```
 
-## Основні ендпоінти
+## Main Endpoints
 
-| Метод | Шлях | Опис |
-|---|---|---|
-| POST | `/api/v1/auth/register` | Реєстрація користувача |
-| POST | `/api/v1/auth/login` | Авторизація, видача JWT |
-| GET | `/api/v1/auth/me` | Профіль поточного користувача |
-| POST | `/api/v1/tasks/` | Створення задачі |
-| GET | `/api/v1/tasks/` | Список задач (пошук, фільтри, сортування, пагінація) |
-| GET | `/api/v1/tasks/overdue` | Прострочені задачі |
-| GET | `/api/v1/tasks/statistics` | Статистика по задачам |
-| GET | `/api/v1/tasks/{task_id}` | Отримати задачу |
-| PUT | `/api/v1/tasks/{task_id}` | Оновити задачу |
-| PATCH | `/api/v1/tasks/{task_id}/status` | Змінити статус задачі |
-| DELETE | `/api/v1/tasks/{task_id}` | Видалити задачу |
-| POST | `/api/v1/tasks/{task_id}/comments` | Додати коментар |
-| GET | `/api/v1/tasks/{task_id}/comments` | Список коментарів |
+| Method | Path                               | Description                                         |
+| ------ | ---------------------------------- | --------------------------------------------------- |
+| POST   | `/api/v1/auth/register`            | User registration                                   |
+| POST   | `/api/v1/auth/login`               | User authentication and JWT issuance                |
+| GET    | `/api/v1/auth/me`                  | Current user profile                                |
+| POST   | `/api/v1/tasks/`                   | Create a task                                       |
+| GET    | `/api/v1/tasks/`                   | List tasks (search, filtering, sorting, pagination) |
+| GET    | `/api/v1/tasks/overdue`            | Overdue tasks                                       |
+| GET    | `/api/v1/tasks/statistics`         | Task statistics                                     |
+| GET    | `/api/v1/tasks/{task_id}`          | Get a task                                          |
+| PUT    | `/api/v1/tasks/{task_id}`          | Update a task                                       |
+| PATCH  | `/api/v1/tasks/{task_id}/status`   | Change task status                                  |
+| DELETE | `/api/v1/tasks/{task_id}`          | Delete a task                                       |
+| POST   | `/api/v1/tasks/{task_id}/comments` | Add a comment                                       |
+| GET    | `/api/v1/tasks/{task_id}/comments` | List comments                                       |
 
-## Бізнес-правила
+## Business Rules
 
-- Статуси задач: `Backlog → In Progress → Review → Done`, а також перехід у `Cancelled` з `Backlog`/`In Progress`/`Review`. Повернення на попередній статус заборонено.
-- Перехід у `Done` вимагає призначеного виконавця та дедлайну, що ще не минув.
-- Задачі у `Review`/`Done` не можна перепризначати; задачі у `Done`/`Cancelled` не можна редагувати.
-- Видалення можливе лише поза статусами `In Progress`/`Review`.
-- Один користувач — не більше 10 активних задач (`Backlog`, `In Progress`, `Review`) одночасно.
-- Фоновий воркер (`app/background/task_canceller.py`) раз на хвилину переводить прострочені задачі у `Cancelled`.
+* Task statuses: `Backlog → In Progress → Review → Done`, with transitions to `Cancelled` also allowed from `Backlog`/`In Progress`/`Review`. Returning to a previous status is not allowed.
+* Transitioning to `Done` requires an assigned executor and a deadline that has not passed.
+* Tasks in `Review`/`Done` cannot be reassigned; tasks in `Done`/`Cancelled` cannot be edited.
+* Deletion is only allowed when the task is not in `In Progress`/`Review`.
+* A user can have no more than 10 active tasks (`Backlog`, `In Progress`, `Review`) at the same time.
+* The background worker (`app/background/task_canceller.py`) checks every minute and moves overdue tasks to `Cancelled`.
